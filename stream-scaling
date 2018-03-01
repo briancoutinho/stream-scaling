@@ -73,6 +73,9 @@ fi
 # Uncomment to show more debugging output
 #DEBUG=1
 
+# Uncomment below to skip a build step since we now pass the array size at runtime
+SKIP_BUILD=1
+
 function total_cache_size {
 # Total up all of the non-instructional caches for every CPU
 # on the system.
@@ -323,29 +326,29 @@ echo
 echo === Check and build stream ===
 if [ ! -f stream.c ] ; then
   wget http://www.cs.virginia.edu/stream/FTP/Code/stream.c
+  SKIP_BUILD=0
 fi
 
-# Since the array size is fixed at compile time, we have to
-# recompile it each time, in case the binary already there
-# was generated on a system with a smaller cache
-
-if [ -f stream ] ; then
-  rm stream
-fi
-
-gcc -O3 $ARRAY_FLAG -fopenmp stream.c -o stream
-if [ $? -ne 0 ] ; then
-  # The most likely way the program will fail to compile is if it's
-  # trying to use more memory than will fit on the standard gcc memory
-  # model.  Try the large one instead.  This will only work on newer
-  # gcc versions (it works on at least>=4.4), so there's no single
-  # compile option set here that will support older gcc versions
-  # and the large memory model.  Just trying both ways seems both
-  # simpler and more definitive than something like checking the
-  # gcc version.
-  echo === Trying large memory model ===
-  echo \(this can take a while to compile\)
-  gcc -O3 $ARRAY_FLAG -fopenmp stream.c -o stream -mcmodel=large # -fopenmp
+if [ -n $SKIP_BUILD ] ; then
+  if [ -f stream ] ; then
+    rm stream
+  fi
+  
+  gcc -O3 -fopenmp stream.c -o stream
+  
+  if [ $? -ne 0 ] ; then
+    # The most likely way the program will fail to compile is if it's
+    # trying to use more memory than will fit on the standard gcc memory
+    # model.  Try the large one instead.  This will only work on newer
+    # gcc versions (it works on at least>=4.4), so there's no single
+    # compile option set here that will support older gcc versions
+    # and the large memory model.  Just trying both ways seems both
+    # simpler and more definitive than something like checking the
+    # gcc version.
+    echo === Trying large memory model ===
+    echo \(this can take a while to compile\)
+    gcc -O3 -fopenmp stream.c -o stream -mcmodel=large # -fopenmp
+  fi
 fi
 
 if [ ! -x stream ] ; then
@@ -366,12 +369,12 @@ while [[ $i -le $MAX_CORES ]] ; do
   export OMP_NUM_THREADS="$i"
 
   if [ -n "$VERBOSE" ] ; then
-    ./stream
+    ./stream $ARRAY_SIZE
   elif [ "$i" -eq 1 ] ; then
-    ./stream
+    ./stream $ARRAY_SIZE
   else
     # Show just a summary after the first line.
-    ./stream | egrep "Number of Threads requested|Function|Triad|Failed|Expected|Observed"
+    ./stream $ARRAY_SIZE | egrep "Number of Threads requested|Function|Triad|Failed|Expected|Observed"
   fi
 
   ((i++))
